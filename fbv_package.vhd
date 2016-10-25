@@ -17,15 +17,16 @@ package body fbv_pkg is
 
 
 function DIG_GAIN (iData, Factor:std_logic_vector; Decimals, res_width: POSITIVE ) return std_logic_vector is
-    variable x : std_logic_vector ((1 + iData'left) downto 0) := (others=>'0');
+    variable x : std_logic_vector ((iData'left + Factor'left) downto 0) := (others=>'0');
     variable max : std_logic_Vector (res_width downto 0) := (others => '1');
+    variable zeros : std_logic_vector (res_width downto 0) := (others => '0');
 begin    
-    x := iData*Factor;
-    if x(x'left) = '1' then
+    x := iData*Factor; 
+    if x(x'left downto decimals) > max then
         return max;
     else
-        max := x((x'left+1) downto ((x'left+1) - res_width));
-        return max;
+        zeros(x'left downto decimals) := x(x'left downto decimals);
+        return zeros;
     end if;
 end DIG_GAIN;
     
@@ -39,13 +40,14 @@ end DIG_GAIN;
                           signal Result        : out std_logic_vector) is           
                           variable Offset_resized : std_logic_vector((iData'left) downto iData'right) := (others=>'0');
                           variable temp_result : std_logic_vector((iData'left +1) downto iData'right) := (others=>'0');
-                          variable f_result : std_logic_vector((iData'left +1) downto iData'right) := (others =>'0');
+                          variable f_result : std_logic_vector((iData'left +1) downto iData'right) := (others =>'1');
     begin
 
            --negativer Offset          
            if Offset(Offset'left) = '1' then
             Offset_resized := (others=>'1');
             Offset_resized((Offset'left) downto 0) := '1' & Offset(Offset'left -1 downto 0);          
+            f_result := (others=>'0');
            else
             --Positiver Offset
             Offset_resized(Offset_resized'left downto 0) := Offset(Offset'left-1 downto 0);

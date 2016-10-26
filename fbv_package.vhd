@@ -17,17 +17,18 @@ package body fbv_pkg is
 
 
 function DIG_GAIN (iData, Factor:std_logic_vector; Decimals, res_width: POSITIVE ) return std_logic_vector is
-    variable x : std_logic_vector ((iData'left + Factor'left) downto 0) := (others=>'0');
+    variable Resultat_Gleitkomma : std_logic_Vector(iData'left + Factor'left downto 0)  := (others=>'0');
     variable max : std_logic_Vector (res_width downto 0) := (others => '1');
-    variable zeros : std_logic_vector (res_width downto 0) := (others => '0');
 begin    
-    x := iData*Factor; 
-    if x(x'left downto decimals) > max then
+    Resultat_Gleitkomma := iData*Factor;
+
+    if Resultat_Gleitkomma(Resultat_Gleitkomma'left downto (res_width + Decimals)) > 0 then
+        --Überlauf!
         return max;
     else
-        zeros(x'left downto decimals) := x(x'left downto decimals);
-        return zeros;
+        return Resultat_Gleitkomma(res_width downto Decimals);
     end if;
+
 end DIG_GAIN;
     
     

@@ -1,3 +1,13 @@
+-- _                   ____     ____    _____      __ 
+--| |          /\     |  _ \   / __ \  |  __ \    /_ |
+--| |         /  \    | |_) | | |  | | | |__) |    | |
+--| |        / /\ \   |  _ <  | |  | | |  _  /     | |
+--| |____   / ____ \  | |_) | | |__| | | | \ \     | |
+--|______| /_/    \_\ |____/   \____/  |_|  \_\    |_|
+                                                   
+-- 
+
+
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
 use IEEE.NUMERIC_STD.all;
@@ -17,7 +27,7 @@ package body fbv_pkg is
 
 
 function DIG_GAIN (iData, Factor:std_logic_vector; Decimals, res_width: POSITIVE ) return std_logic_vector is
-    variable Resultat_Gleitkomma : std_logic_Vector(iData'left + Factor'left downto 0)  := (others=>'0');
+    variable Resultat_Gleitkomma : std_logic_Vector(iData'left + Factor'left +1 downto 0)  := (others=>'0');
     variable max : std_logic_Vector (res_width downto 0) := (others => '1');
 begin    
     Resultat_Gleitkomma := iData*Factor;
@@ -26,7 +36,7 @@ begin
         --Überlauf!
         return max;
     else
-        return Resultat_Gleitkomma(res_width downto Decimals);
+        return Resultat_Gleitkomma(Resultat_Gleitkomma'left downto res_width);
     end if;
 
 end DIG_GAIN;
@@ -39,7 +49,7 @@ end DIG_GAIN;
     --            -> Wenn -Ofsset + iData kleiner 0 sind muss der Wert auf 0 gesetzt werden
     procedure DIG_OFFSET (signal iDATA, Offset : in  std_logic_vector;
                           signal Result        : out std_logic_vector) is           
-                          variable Offset_resized : std_logic_vector((iData'left) downto iData'right) := (others=>'0');
+                          variable Offset_resized : std_logic_vector((iData'left+1) downto iData'right) := (others=>'0');
                           variable temp_result : std_logic_vector((iData'left +1) downto iData'right) := (others=>'0');
                           variable f_result : std_logic_vector((iData'left +1) downto iData'right) := (others =>'1');
     begin
@@ -51,12 +61,12 @@ end DIG_GAIN;
             f_result := (others=>'0');
            else
             --Positiver Offset
-            Offset_resized(Offset_resized'left downto 0) := Offset(Offset'left-1 downto 0);
+            Offset_resized(Offset'left -1 downto 0) := Offset(Offset'left-1 downto 0);
             f_result := '0' & f_result(f_result'left - 1 downto f_result'right);
            end if;
 
            --Berechnung
-           temp_result := iData + Offset_resized; 
+           temp_result := ('0' & iData) + Offset_resized; 
            
            if temp_result(temp_result'left downto temp_result'left -1) = "00" then --00 bedeutet, dass es weder eine Bereichsunter oder überschreitung gab
                 Result <= temp_result;

@@ -51,22 +51,35 @@ architecture Behavioral of top is
 
 signal VALID_PIC : std_logic;
 signal some_buf : std_logic_vector(i_video'left + 1 downto 0) := (others=>'0');
-signal offset_buf : std_logic_vector (i_video'left + 1 downto 0);
+signal offset_buf : std_logic_vector (i_video'left + 1 downto 0) := (others => '0');
+
+signal semaphor : std_logic := '1';
 
 constant DEC: POSITIVE  := 4;
+constant res_width: POSITIVE := i_video'left +1;
+constant zero_int : std_logic_vector (i_dig_offset'left downto DEC) := (others=>'0');
 
 begin
     process (i_clk) 
     --variable offset_buf : std_logic_vector (i_video'left + 1 downto 0);
-    variable gain_buf : std_logic_vector(i_video'left + 1 downto 0);
-    variable res_width: POSITIVE := gain_buf'left;
+    variable gain_buf : std_logic_vector(i_video'left + 1 downto 0) := (others=>'0');
+    --variable res_width: POSITIVE := gain_buf'left;
     begin 
         if rising_edge(i_clk) then
              if (i_lval and i_fval) = '1' then
-                  DIG_OFFSET(i_video,i_dig_offset,offset_buf);
-                  gain_buf := DIG_GAIN(offset_buf,i_dig_gain,DEC, res_width);
-                  some_buf <= gain_buf;
-                  o_video <= gain_buf(o_video'left downto 0);
+                 if semaphor = '1' then             
+                    DIG_OFFSET(i_video,i_dig_offset,offset_buf);
+                    semaphor <= '0';
+                 else
+                  if offset_buf(offset_buf'left) = '1' and i_dig_gain(i_dig_gain'left downto DEC) = zero_int then
+                    o_video <= offset_buf(o_video'left downto 0);
+                  else
+                    gain_buf := DIG_GAIN(offset_buf,i_dig_gain,DEC, res_width);
+                    some_buf <= gain_buf;
+                    o_video <= gain_buf(o_video'left downto 0);
+                  end if;
+                  semaphor <= '1';
+                end if;
              else
                   o_video <= some_buf(o_video'left downto 0);
              end if;

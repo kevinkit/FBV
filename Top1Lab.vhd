@@ -1,3 +1,9 @@
+----------------------------------------------------------------------------------
+-- Company: 
+-- Engineer: 
+-- 
+-- Create Date: 27.10.2016 23:19:05
+-- Design Name: 
 -- _                   ____     ____    _____      __ 
 --| |          /\     |  _ \   / __ \  |  __ \    /_ |
 --| |         /  \    | |_) | | |  | | | |__) |    | |
@@ -6,73 +12,66 @@
 --|______| /_/    \_\ |____/   \____/  |_|  \_\    |_|
                                                    
 -- 
+-- Dependencies: 
+-- 
+-- Revision:
+-- Revision 0.01 - File Created
+-- Additional Comments:
+-- 
+----------------------------------------------------------------------------------
 
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.NUMERIC_STD.all;
-use ieee.std_logic_unsigned.all;
+use work.fbv_pkg.all;
+-- Uncomment the following library declaration if using
+-- arithmetic functions with Signed or Unsigned values
+--use IEEE.NUMERIC_STD.ALL;
 
-package fbv_pkg is
-    --subtype Positive is Integer range 1 to Integer'high;
-    function DIG_GAIN (iData, Factor:std_logic_vector; Decimals, res_width: POSITIVE ) return std_logic_vector;
-    procedure DIG_OFFSET (signal iDATA, Offset : in  std_logic_vector;
-                          signal Result        : out std_logic_vector);
-end fbv_pkg;
-
-
-package body fbv_pkg is
-    --returns iData * Factor
+-- Uncomment the following library declaration if instantiating
+-- any Xilinx leaf cells in this code.
+--library UNISIM;
+--use UNISIM.VComponents.all;
 
 
 
-function DIG_GAIN (iData, Factor:std_logic_vector; Decimals, res_width: POSITIVE ) return std_logic_vector is
-    variable Resultat_Gleitkomma : std_logic_Vector(iData'left + Factor'left +1 downto 0)  := (others=>'0');
-    variable max : std_logic_Vector (res_width downto 0) := (others => '1');
-begin    
-    Resultat_Gleitkomma := iData*Factor;
+entity top is
+    Port ( i_dig_gain : in STD_LOGIC_VECTOR (7 downto 0);
+           i_dig_offset : in STD_LOGIC_VECTOR (7 downto 0);
+           i_video : in STD_LOGIC_VECTOR (7 downto 0);
+           i_clk : in STD_LOGIC;
+           i_fval : in STD_LOGIC;
+           i_lval : in STD_LOGIC;
+           o_video : out STD_LOGIC_VECTOR (7 downto 0);
+           o_fval : out STD_LOGIC;
+           o_lval : out STD_LOGIC);
+end top;
 
-    if Resultat_Gleitkomma(Resultat_Gleitkomma'left downto (res_width + Decimals)) > 0 then
-        --Überlauf!
-        return max;
-    else
-        return Resultat_Gleitkomma(Resultat_Gleitkomma'left downto res_width);
-    end if;
+architecture Behavioral of top is
 
-end DIG_GAIN;
-    
-    
-    
-    --Result = iData + Offset
-    --Problem: 1) Offset negativ -> Wie kann ich unterscheiden ob er negativ ist? -> Was muss ich anders machen wenn negativ?
-    --         2) Wenn Offset + iData größer ist als das maximum -> maximum Wert anehmen
-    --            -> Wenn -Ofsset + iData kleiner 0 sind muss der Wert auf 0 gesetzt werden
-    procedure DIG_OFFSET (signal iDATA, Offset : in  std_logic_vector;
-                          signal Result        : out std_logic_vector) is           
-                          variable Offset_resized : std_logic_vector((iData'left+1) downto iData'right) := (others=>'0');
-                          variable temp_result : std_logic_vector((iData'left +1) downto iData'right) := (others=>'0');
-                          variable f_result : std_logic_vector((iData'left +1) downto iData'right) := (others =>'1');
-    begin
+signal VALID_PIC : std_logic;
+signal some_buf : std_logic_vector(i_video'left + 1 downto 0) := (others=>'0');
+signal offset_buf : std_logic_vector (i_video'left + 1 downto 0);
 
-           --negativer Offset          
-           if Offset(Offset'left) = '1' then
-            Offset_resized := (others=>'1');
-            Offset_resized((Offset'left) downto 0) := '1' & Offset(Offset'left -1 downto 0);          
-            f_result := (others=>'0');
-           else
-            --Positiver Offset
-            Offset_resized(Offset'left -1 downto 0) := Offset(Offset'left-1 downto 0);
-            f_result := '0' & f_result(f_result'left - 1 downto f_result'right);
-           end if;
+constant DEC: POSITIVE  := 4;
 
-           --Berechnung
-           temp_result := ('0' & iData) + Offset_resized; 
-           
-           if temp_result(temp_result'left downto temp_result'left -1) = "00" then --00 bedeutet, dass es weder eine Bereichsunter oder überschreitung gab
-                Result <= temp_result;
-           else
-                Result <= f_result;
-           end if;
-
-    end DIG_OFFSET;       
-end fbv_pkg;
+begin
+    process (i_clk) 
+    --variable offset_buf : std_logic_vector (i_video'left + 1 downto 0);
+    variable gain_buf : std_logic_vector(i_video'left + 1 downto 0);
+    variable res_width: POSITIVE := gain_buf'left;
+    begin 
+        if rising_edge(i_clk) then
+             if (i_lval and i_fval) = '1' then
+                  DIG_OFFSET(i_video,i_dig_offset,offset_buf);
+                  gain_buf := DIG_GAIN(offset_buf,i_dig_gain,DEC, res_width);
+                  some_buf <= gain_buf;
+                  o_video <= gain_buf(o_video'left downto 0);
+             else
+                  o_video <= some_buf(o_video'left downto 0);
+             end if;
+             o_fval <= i_fval;
+             o_lval <= i_lval;
+         end if;
+    end process;
+end Behavioral;

@@ -49,13 +49,12 @@ end top;
 
 architecture Behavioral of top is
 
-signal VALID_PIC : std_logic;
-signal some_buf : std_logic_vector(i_video'left + 1 downto 0) := (others=>'0');
+
 signal offset_buf : std_logic_vector (i_video'left + 1 downto 0) := (others => '0');
 
 signal fval : std_logic := '0';
 signal lval : std_logic := '0';
-signal semaphor : std_logic := '1';
+
 
 constant DEC: POSITIVE  := 4;
 constant res_width: POSITIVE := i_video'left +1;
@@ -80,34 +79,10 @@ begin
                 gain_buf := DIG_GAIN(offset_buf,i_dig_gain,DEC,res_width);
            
                 o_video <= gain_buf(o_video'left downto 0);
-                --offset_buf(o_video'left downto 0);
+   
                       
             end if;
-            
-       
-       
-       
-       
-       
---             if (i_lval and i_fval) = '1' then
---                 if semaphor = '1' then             
---                    DIG_OFFSET(i_video,i_dig_offset,offset_buf);
---                    semaphor <= '0';
---                 else
---                  if offset_buf(offset_buf'left) = '1' and i_dig_gain(i_dig_gain'left downto DEC) = zero_int then
---                    o_video <= offset_buf(o_video'left downto 0);
---                  else
---                    gain_buf := DIG_GAIN(offset_buf,i_dig_gain,DEC, res_width);
---                    some_buf <= gain_buf;
---                    o_video <= gain_buf(o_video'left downto 0);
---                  end if;
---                  semaphor <= '1';
---                  fval <= i_fval;
---                  lval <= i_lval;
---                end if;
---             else
---                  o_video <= some_buf(o_video'left downto 0);
---             end if;
+
          end if;
     end process;
     

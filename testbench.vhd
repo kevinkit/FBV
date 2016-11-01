@@ -73,30 +73,16 @@ begin
      variable rdline: LINE;
      variable wrLine: LINE;
     begin
-       -- if rising_edge(TbClock) then
        readline(infile, rdline);
-       --write(wrLine,rdline);
-       --writeline(outfile,rdline);
-       
-       
-       read(rdline,Lines);
-       
+       read(rdline,Lines);     
        write(wrLine, Lines);
        write(wrLine, ' ' );
-      -- writeline(outfile,wrLine);
-
-
        read(rdLine,Rows);
-       
        write(wrLine, Rows);
        write(wrLine, ' ' );
-      -- writeline(outfile,wrLine);
-       
        read(rdLine,Channels);
-    
        write(wrLine,Channels);
        write(wrLine, ' ' );
-           
        writeline(outfile,wrLine);
        
        report("Width, Height, Channels: " & integer'image(Lines) & " " & integer'image(Rows) & " " & integer'image(Channels));
@@ -113,7 +99,7 @@ begin
                 for J in 0 to Rows loop
 
                 
-                    wait for 1*TbPeriod;
+                    wait until TbClock'event and TbClock='1';
 
                     read(rdline, rd_int);
 
@@ -150,80 +136,15 @@ begin
            --Sorg dafür das es auch "unten" bleibt
            i_fval <= '0';
            i_lval <= '0';
---        readline(infile, rdline);
-        
---        wait for 16*TbPeriod;
-        
---    --    read(rdline, rd_int);
---        report("Wert: " & integer'image(rd_int));
---        read(rdline, rd_int);
---        report("Wert: " & integer'image(rd_int));
-        
---      --  report("Vekt: " & integer'image(to_integer(unsigned(
-       -- to_stdlogicvector(rd_vect)))));
+
       end loop;
       file_close(infile);
       file_close(outfile);
       wait;
       
---            i_fval <= '1';
---            i_lval <= '1';
-        
---            --normal
---            i_video <= "00000001"; --1
---            i_dig_gain <= "00100000"; --2.0
---            i_dig_offset <= "00000001"; --1
---            assert false report "diese Meldung wird immer ausgegeben" severity note;
-                        
---            wait for 4*TbPeriod;
-            
---            --overflow from mult
---            i_video <= "01110000";
---            i_dig_gain <= "00100010";
---            i_dig_offset <= "00001111";
-            
---            wait for 2*TbPeriod;
 
---             --normal
---            i_video <= "00000001";
---            i_dig_gain <= "00101000";
---            i_dig_offset <= "00000011";
-        
-
-            
---            wait for 2*TbPeriod;
-                        
---            --overflow from add
---            i_video <= "01110000";
---            i_dig_gain <= "01100010";
---            i_dig_offset <= "00001111";
-            
---            wait for 2*TbPeriod;
-            
---             --normal
---            i_video <= "00000101";
---            i_dig_gain <= "00101010";
---            i_dig_offset <= "00000011";
-        
-
-            
-
---            wait for 2*TbPeriod;
-                        
---            --underflow from add
---            i_video <= "01110000";
---            i_dig_gain <= "11111010";
---            i_dig_offset <= "11110000";
-            
-                        
-            
-            
---            wait;
-            
-       -- end if;        
-       -- wait;
     end process;
-    --wait;
+
 end tb;
 
 configuration cfg_tb_top of tb_top is

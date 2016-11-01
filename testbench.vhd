@@ -8,6 +8,8 @@
 -- 
 library ieee;
 use ieee.std_logic_1164.all;
+use STD.textio.all;
+use IEEE.numeric_std.all;
 
 entity tb_top is
 end tb_top;
@@ -37,7 +39,7 @@ architecture tb of tb_top is
     signal o_lval       : std_logic;
 
     constant TbPeriod : time := 10 ns; -- EDIT put right period here
-    signal TbClock : std_logic := '0';
+    signal TbClock : std_logic := '1';
 
 begin
 
@@ -58,27 +60,165 @@ begin
     i_clk <= TbClock;
 
     stimuli : process
+     file infile: text open read_mode is "C:\Users\Kevin\OneDrive\Master2\FBV\Labore\lena_sw.txt";
+     file outfile: text open write_mode is "myfile.txt";
+     
+     
+     variable Lines: integer;
+     variable Rows: integer;
+     variable Channels: integer;
+     
+     variable rd_int: integer;
+     variable rd_vect: std_logic_vector(7 downto 0);
+     variable rdline: LINE;
+     variable wrLine: LINE;
     begin
        -- if rising_edge(TbClock) then
-            i_fval <= '1';
-            i_lval <= '1';
-        
-            i_video <= "00000001";
-            i_dig_gain <= "00100000";
-            i_dig_offset <= "00000001";
-        
-            
-            
-            
-            
-            
-            wait for 2*TbPeriod;
-            
-            i_video <= "01110000";
-            i_dig_gain <= "00100010";
-            i_dig_offset <= "00001111";
+       readline(infile, rdline);
+       --write(wrLine,rdline);
+       --writeline(outfile,rdline);
+       
+       
+       read(rdline,Lines);
+       
+       write(wrLine, Lines);
+       write(wrLine, ' ' );
+      -- writeline(outfile,wrLine);
+
+
+       read(rdLine,Rows);
+       
+       write(wrLine, Rows);
+       write(wrLine, ' ' );
+      -- writeline(outfile,wrLine);
+       
+       read(rdLine,Channels);
+    
+       write(wrLine,Channels);
+       write(wrLine, ' ' );
+           
+       writeline(outfile,wrLine);
+       
+       report("Width, Height, Channels: " & integer'image(Lines) & " " & integer'image(Rows) & " " & integer'image(Channels));
+       
+       i_dig_gain <= "00001000"; --2.5
+       i_dig_offset <= "00000100"; --4
+      -- i_dig_offset <= "01100111"; --1
+       i_fval <= '0';
+       i_lval <= '0';
+       while not (endfile(infile)) loop
+            for I in 0 to Lines-1 loop
+                readline(infile, rdline);
+                report("----------NEW LINE------");
+                for J in 0 to Rows loop
+
+                
+                    wait for 1*TbPeriod;
+
+                    read(rdline, rd_int);
+
+                    report("Wert: " & integer'image(rd_int));
+                    i_video <= std_logic_vector(to_unsigned(rd_int,i_video'length));
+                   -- i_lval <= '0';
+                    --i_fval <= '0';
                     
-            wait;
+                    if J > 0 then
+                        write(wrLine, to_integer(unsigned(o_video)));
+                        write(wrLine, ' ');
+                    end if;
+                    
+                    i_lval <= '1';
+                    i_fval <= '1';  
+                    
+                    
+                    --Setz es früh genug um
+                    
+                    if I = Lines-1  and J = Rows -1 then
+                        i_fval <= '0';
+                        i_lval <= '0';
+                    elsif J = Rows and I /= Lines -1 then
+                        i_lval <= '0';
+                        wait for 200 ns;
+                        i_lval <= '1';
+                    end if;   
+               end loop;
+                   
+               writeline(outfile,wrLine);
+                    
+            end loop;
+            
+           --Sorg dafür das es auch "unten" bleibt
+           i_fval <= '0';
+           i_lval <= '0';
+--        readline(infile, rdline);
+        
+--        wait for 16*TbPeriod;
+        
+--    --    read(rdline, rd_int);
+--        report("Wert: " & integer'image(rd_int));
+--        read(rdline, rd_int);
+--        report("Wert: " & integer'image(rd_int));
+        
+--      --  report("Vekt: " & integer'image(to_integer(unsigned(
+       -- to_stdlogicvector(rd_vect)))));
+      end loop;
+      file_close(infile);
+      file_close(outfile);
+      wait;
+      
+--            i_fval <= '1';
+--            i_lval <= '1';
+        
+--            --normal
+--            i_video <= "00000001"; --1
+--            i_dig_gain <= "00100000"; --2.0
+--            i_dig_offset <= "00000001"; --1
+--            assert false report "diese Meldung wird immer ausgegeben" severity note;
+                        
+--            wait for 4*TbPeriod;
+            
+--            --overflow from mult
+--            i_video <= "01110000";
+--            i_dig_gain <= "00100010";
+--            i_dig_offset <= "00001111";
+            
+--            wait for 2*TbPeriod;
+
+--             --normal
+--            i_video <= "00000001";
+--            i_dig_gain <= "00101000";
+--            i_dig_offset <= "00000011";
+        
+
+            
+--            wait for 2*TbPeriod;
+                        
+--            --overflow from add
+--            i_video <= "01110000";
+--            i_dig_gain <= "01100010";
+--            i_dig_offset <= "00001111";
+            
+--            wait for 2*TbPeriod;
+            
+--             --normal
+--            i_video <= "00000101";
+--            i_dig_gain <= "00101010";
+--            i_dig_offset <= "00000011";
+        
+
+            
+
+--            wait for 2*TbPeriod;
+                        
+--            --underflow from add
+--            i_video <= "01110000";
+--            i_dig_gain <= "11111010";
+--            i_dig_offset <= "11110000";
+            
+                        
+            
+            
+--            wait;
             
        -- end if;        
        -- wait;

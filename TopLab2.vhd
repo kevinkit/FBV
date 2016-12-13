@@ -50,8 +50,32 @@ entity TOPlab2 is
            o_locked : out STD_LOGIC);
 end TOPlab2;
 		
-
 architecture Behavioral of TOPlab2 is
+
+component FSM is
+    Port ( sysclk : in STD_LOGIC;
+       pix_clk : in STD_LOGIC;
+       rst : in STD_LOGIC;
+       resync : in STD_LOGIC;
+       
+       --interne FPGA Signale die von außen rein kommen
+       idelay_ctrl_rdy : in STD_LOGIC;
+       idelay2_tab_preset : out STD_LOGIC_VECTOR(4 downto 0);
+       idelay2_cnt_out : in std_logic_vector(4 downto 0);
+       idelay2_ld : out STD_LOGIC; --das muss von der STAB CHECK FSM dann ausgegeben werden!
+       iserdese2_bitslip : out STD_LOGIC;
+       data : in STD_LOGIC_VECTOR(7 downto 0);
+       ce : out std_logic;
+       o_done : out STD_LOGIC;
+       o_err : out STD_LOGIC);
+       
+   --    o_locked : out STD_LOGIC);
+end component FSM;
+
+
+
+
+
 
 component clk_wiz_0
 port
@@ -100,6 +124,18 @@ signal i_bitslip : std_logic := '0';
 
 --rst
 signal rst_buf : std_logic := '0';
+
+
+
+--FSM
+signal ce_buf : std_logic := '0';
+
+
+
+
+
+
+
 
 begin
 reset_sync_process: process(sysclk_buf)
@@ -171,7 +207,7 @@ begin
     );
 end block CLK;
 
-
+nsens_clk_clkNet <= not sens_clk_clkNet;
 CLK_WIZ: block
     begin
     
@@ -222,14 +258,14 @@ begin
        CNTVALUEOUT => idelay_cnt_out, -- 5-bit output: Counter value output x
        DATAOUT => idelay_data_out,     -- 1-bit output: Delayed data output x
        C => sysclk_buf,               -- 1-bit input: Clock input x
-       CE => '0',                   -- 1-bit input: Active high enable increment/decrement input -> muss nicht getan werden (?)
+       CE => ce_buf,                   -- 1-bit input: Active high enable increment/decrement input -> muss nicht getan werden (?)
        CINVCTRL => '0',       -- 1-bit input: Dynamic clock inversion input
        CNTVALUEIN => idelay_cnt_in,   -- 5-bit input: Counter value input
        DATAIN => idelay_i_data,           -- 1-bit input: Internal delay data input
        IDATAIN => idelay_data_in,         -- 1-bit input: Data input from the I/O
-       INC => '0',                 -- 1-bit input: Increment / Decrement tap delay input
-       LD => '0',                   -- 1-bit input: Load IDELAY_VALUE input
-       LDPIPEEN => idelay_ld,              -- 1-bit input: Enable PIPELINE register to load data input
+       INC => ce_buf,                 -- 1-bit input: Increment / Decrement tap delay input
+       LD => idelay_ld,                   -- 1-bit input: Load IDELAY_VALUE input
+       LDPIPEEN => '0',              -- 1-bit input: Enable PIPELINE register to load data input
        REGRST => nidelay_rdy_buff    -- 1-bit input: Active-high reset tap-delay input //einer sendet ein "READY" also muss für ein RESET negiert werden 
     );    
     
@@ -252,8 +288,8 @@ begin
       INIT_Q2 => '0',
       INIT_Q3 => '0',
       INIT_Q4 => '0',
-      INTERFACE_TYPE => "MEMORY",   -- MEMORY, MEMORY_DDR3, MEMORY_QDR, NETWORKING, OVERSAMPLE
-      IOBDELAY => "NONE",           -- NONE, BOTH, IBUF, IFD
+      INTERFACE_TYPE => "NETWORKING",   -- MEMORY, MEMORY_DDR3, MEMORY_QDR, NETWORKING, OVERSAMPLE
+      IOBDELAY => "IFD",           -- NONE, BOTH, IBUF, IFD
       NUM_CE => 2,                  -- Number of clock enables (1,2)
       OFB_USED => "FALSE",          -- Select OFB path (FALSE, TRUE)
       SERDES_MODE => "MASTER",      -- MASTER, SLAVE
@@ -266,14 +302,14 @@ begin
    port map (
       O => open,                       -- 1-bit output: Combinatorial output
       -- Q1 - Q8: 1-bit (each) output: Registered data outputs
-      Q1 => o_iserdes(1),
-      Q2 => o_iserdes(2),
-      Q3 => o_iserdes(3),
-      Q4 => o_iserdes(4),
-      Q5 => o_iserdes(5),
-      Q6 => o_iserdes(6),
-      Q7 => o_iserdes(7),
-      Q8 => o_iserdes(8),
+      Q1 => o_iserdes(0),
+      Q2 => o_iserdes(1),
+      Q3 => o_iserdes(2),
+      Q4 => o_iserdes(3),
+      Q5 => o_iserdes(4),
+      Q6 => o_iserdes(5),
+      Q7 => o_iserdes(6),
+      Q8 => o_iserdes(7),
    --unnütz? --> auf open  oder auskommentieren?
    -- SHIFTOUT1, SHIFTOUT2: 1-bit (each) output: Data width expansion output ports
    --   SHIFTOUT1 => SHIFTOUT1,
@@ -292,7 +328,7 @@ begin
       
       -- Clocks: 1-bit (each) input: ISERDESE2 clock input ports
       CLK => sens_clk_clkNet,                   -- 1-bit input: High-speed clock
-      CLKB => not sens_clk_clkNet,                 -- 1-bit input: High-speed secondary clock
+      CLKB => nsens_clk_clkNet,                 -- 1-bit input: High-speed secondary clock
       CLKDIV => PIXEL_CLK,             -- 1-bit input: Divided clock --von den Pixeln her geteilt
       OCLK => '0',                 -- 1-bit input: High speed output clock used when INTERFACE_TYPE="MEMORY"  ist aber DDR
       -- Dynamic Clock Inversions: 1-bit (each) input: Dynamic clock inversion pins to switch clock polarity
@@ -312,6 +348,29 @@ begin
    o_data <= o_iserdes; 
 
    -- End of ISERDESE2_inst instantiation
+    
+        FSM_MODULE_INST:FSM
+   Port map( 
+              sysclk              =>  sysclk_buf,
+              pix_clk              =>  PIXEL_CLK,          
+              rst                  =>  rst_buf,
+              resync               =>  resync,
+              
+              -- internal fpg logic signals
+              idelay_ctrl_rdy      =>  idelay_rdy_buff,
+              idelay2_tab_preset  =>  idelay_cnt_in,
+              idelay2_ld          =>  idelay_ld,
+              iserdese2_bitslip    =>  i_bitslip,
+              data                 =>  o_iserdes,
+              idelay2_cnt_out => idelay_cnt_out,
+              ce => ce_buf,
+              -- external signals
+              o_done               =>  o_done,
+              o_err                =>  o_err
+              
+       --       o_locked             =>  o_locked
+              );
+
 
 
 end block ISERDES;

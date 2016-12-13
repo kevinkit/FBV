@@ -84,8 +84,9 @@ signal word_pending : std_logic := '0';
 signal word_ack : std_logic := '0';
 
 signal counter : std_logic_vector(3 downto 0) := (others=>'0');
-signal limit : std_logic_vector(3 downto 0) := "0101";
+signal limit : std_logic_vector(3 downto 0) := "0100";
 
+signal idelay_limit : std_logic_vector(idelay2_tab_preset'left downto 0) := (others => '1');
 
 signal counteridelay : std_logic_vector(idelay2_tab_preset'left downto 0) := (others => '0');
 
@@ -95,15 +96,18 @@ signal data_s : std_logic_vector(data'left downto 0) := (others=>'0');
 signal bitslip_buf : std_logic := '0';
 signal idelay_ld_buf : std_logic := '0';
 signal ce_buf : std_logic := '0';
-
-signal semaphor : std_logic := '0';
+signal idelay2_cnt_out_buf : std_logic_vector(idelay2_cnt_out'left downto 0) := (others => '0');
+signal first_save: std_logic_vector(idelay2_cnt_out'left downto 0) := (others => '0');
+signal second_save: std_logic_vector(idelay2_cnt_out'left downto 0) := (others => '0');
 
 begin
 
 
 iserdese2_bitslip <= bitslip_buf;
+idelay2_cnt_out_buf <= idelay2_cnt_out;
 --Controller, der dann in die jeweiligen anderen Zustandsautomaten springt 
 FSM_MAIN_PROC: process(sysclk)
+variable sum : std_logic_vector(idelay2_cnt_out'left downto 0) := (others => '0');
 begin
     if rising_edge(sysclk) then
         if rst = '1' then
@@ -132,9 +136,13 @@ begin
                     
                     if stab_err = '1' and stab_ack = '1' then 
                         STATE_MAIN <= CHECK2UNSTABLE;
+                        
                         stab_pending <= '0';
-                        idelay_ld_buf <= '1';
-                        semaphor <= '0';
+                  --      idelay_ld_buf <= '1';
+                    --Kann unstabilen zustand nicht finden in dieser richtung 
+                    --FEHLER!
+                    elsif idelay2_cnt_out_buf = idelay_limit then
+                        STATE_MAIN <= ERROR;
                     end if;
     
                 when CHECK2UNSTABLE =>
@@ -143,17 +151,21 @@ begin
                     --solange bis wieder stabil
                     if stab_err = '0' and stab_ack = '1' then 
                         STATE_MAIN <= CHECK3STABLE;
-                        idelay_ld_buf <= '1';
+           --               STATE_MAIN <= FINAL_CHECK;
+                      --  idelay_ld_buf <= '1';
+                        first_save <= idelay2_cnt_out_buf;
                      end if;
                 when CHECK3STABLE =>
                     --solange bis wieder unstabil
-                    idelay_ld_buf <= '0';
-                    if stab_err = '1' and stab_ack = '1' then
+          --          idelay_ld_buf <= '0';
+                   if stab_err = '1' and stab_ack = '1' then
                         STATE_MAIN <= FINAL_CHECK;
-                        idelay_ld_buf <= '1';
+                       idelay_ld_buf <= '1';
+                         second_save <= idelay2_cnt_out_buf;
                     end if;
                when FINAL_CHECK =>
-               
+                    sum := std_logic_vector(unsigned(second_save) + unsigned(first_save));
+                    counteridelay <= '0' & sum(sum'left downto 1);
                when ERROR => 
                
                when DONE =>
@@ -195,12 +207,17 @@ if rising_edge(pix_clk) then
             counter <= (others=>'0');
             stab_ack <= '1';
             stab_err <= '0';
-            STATE_FSM <= RESET;
+            STATE_FSM <= CHECK;
         when ERROR => 
             counter <= (others=>'0');
             stab_ack <= '1';
             stab_err <= '1';
-            STATE_FSM <= RESET;
+            if stab_pending = '1' then
+                STATE_FSM <= CHECK;
+                data_s <= data;
+            else
+                STATE_FSM <= RESET;       
+            end if;
     end case;
 end if;
 end process FSM_STAB_CHK;

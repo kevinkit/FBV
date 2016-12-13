@@ -134,6 +134,7 @@ begin
                     idelay_ld_buf <= '0';
                     ce_buf <= '1';
                     
+                    --solange bis wieder unstabil
                     if stab_err = '1' and stab_ack = '1' then 
                         STATE_MAIN <= CHECK2UNSTABLE;
                         
@@ -186,6 +187,7 @@ begin
 if rising_edge(pix_clk) then
     case STATE_FSM is
         when RESET =>
+            data_s <= (others => '0');
             if stab_pending = '1' then
                 STATE_FSM <= CHECK_START;
             end if;
@@ -203,11 +205,17 @@ if rising_edge(pix_clk) then
                 STATE_FSM <= SUCCESS;
             end if;
             
+            if stab_pending = '0' then
+                STATE_FSM <= RESET;
+            end if;
+            
         when SUCCESS =>
             counter <= (others=>'0');
             stab_ack <= '1';
             stab_err <= '0';
             STATE_FSM <= CHECK;
+            data_s <= data;
+            
         when ERROR => 
             counter <= (others=>'0');
             stab_ack <= '1';

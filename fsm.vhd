@@ -132,13 +132,13 @@ begin
                 when CHECK1STABLE =>
                     --solange bis unstabil
                     idelay_ld_buf <= '0';
+                   -- ce_buf <= '1';
                     ce_buf <= '1';
-                    
                     --solange bis wieder unstabil
-                    if stab_err = '1' and stab_ack = '1' then 
+                    if stab_err = '1'  then 
                         STATE_MAIN <= CHECK2UNSTABLE;
-                        
-                        stab_pending <= '0';
+                           
+                   --     stab_pending <= '0';
                   --      idelay_ld_buf <= '1';
                     --Kann unstabilen zustand nicht finden in dieser richtung 
                     --FEHLER!
@@ -150,27 +150,32 @@ begin
                     stab_pending <= '1';
                     idelay_ld_buf <= '0';
                     --solange bis wieder stabil
-                    if stab_err = '0' and stab_ack = '1' then 
+                    if stab_err = '0' then 
                         STATE_MAIN <= CHECK3STABLE;
            --               STATE_MAIN <= FINAL_CHECK;
                       --  idelay_ld_buf <= '1';
-                        first_save <= idelay2_cnt_out_buf;
+                     
+                        first_save <= std_logic_vector(unsigned(idelay2_cnt_out_buf)); --what an ugly horrible hack...
                      end if;
                 when CHECK3STABLE =>
                     --solange bis wieder unstabil
           --          idelay_ld_buf <= '0';
-                   if stab_err = '1' and stab_ack = '1' then
-                        STATE_MAIN <= FINAL_CHECK;
-                       idelay_ld_buf <= '1';
-                         second_save <= idelay2_cnt_out_buf;
+                    if stab_err = '1'  then
+                        STATE_MAIN <= DONE;
+                        idelay_ld_buf <= '1';
+                    else
+                        second_save <= idelay2_cnt_out_buf;
                     end if;
                when FINAL_CHECK =>
-                    sum := std_logic_vector(unsigned(second_save) + unsigned(first_save));
-                    counteridelay <= '0' & sum(sum'left downto 1);
+                    
                when ERROR => 
                
                when DONE =>
-                   
+                   sum := std_logic_vector(unsigned(second_save) + unsigned(first_save));
+                   counteridelay <= '0' & sum(sum'left downto 1);
+                   STATE_MAIN <= RESET;
+                   idelay_ld_buf <= '1';
+                                   
             end case;
             
         end if;
@@ -196,13 +201,25 @@ if rising_edge(pix_clk) then
             STATE_FSM <= CHECK;
             data_s <= data;
         when CHECK =>
-            if data /= data_s then
-                STATE_FSM <= ERROR;
-            elsif counter /= limit then
-                counter <= std_logic_vector(unsigned(counter) +1);
-                data_s <= data;
+            --wenn Daten aus dem letzten Takt ungleich 
+            stab_ack <= '0';
+            if counter /= limit then
+                if data_s = data then
+                counter <= std_logic_vector(unsigned(counter) + 1);
+                    data_s <= data;
+                else
+                    STATE_FSM <= ERROR;
+                    counter <= (others=>'0');
+                    --stab_ack <= '1';
+                    stab_err <= '1';
+                end if;
             else
                 STATE_FSM <= SUCCESS;
+                counter <= (others=>'0');
+                --überschreibt stack_ack
+                stab_ack <= '1';
+                stab_err <= '0';
+                data_s <= data;
             end if;
             
             if stab_pending = '0' then
@@ -210,16 +227,18 @@ if rising_edge(pix_clk) then
             end if;
             
         when SUCCESS =>
-            counter <= (others=>'0');
-            stab_ack <= '1';
-            stab_err <= '0';
+            counter <= std_logic_vector(unsigned(counter) + 1);
+       --     stab_ack <= '1';
+       --     stab_err <= '0';
             STATE_FSM <= CHECK;
-            data_s <= data;
+    --        data_s <= data;
             
         when ERROR => 
-            counter <= (others=>'0');
-            stab_ack <= '1';
-            stab_err <= '1';
+            --counter <= (others=>'0');
+           counter <= std_logic_vector(unsigned(counter) + 1);
+           
+           -- stab_ack <= '1';
+            --stab_err <= '1';
             if stab_pending = '1' then
                 STATE_FSM <= CHECK;
                 data_s <= data;

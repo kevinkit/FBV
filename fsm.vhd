@@ -62,8 +62,7 @@ type FSM_MAIN is(
                     CHECK2UNSTABLE,
                     CHECK3STABLE, 
                     ERROR,
-                    FINAL_CHECK,
-                    DONE);
+                    STAB_DONE);
 signal STATE_MAIN : FSM_MAIN := RESET; --Initialwert
 
 type FSM_STAB is(
@@ -100,6 +99,10 @@ signal idelay2_cnt_out_buf : std_logic_vector(idelay2_cnt_out'left downto 0) := 
 signal first_save: std_logic_vector(idelay2_cnt_out'left downto 0) := (others => '0');
 signal second_save: std_logic_vector(idelay2_cnt_out'left downto 0) := (others => '0');
 
+
+
+signal first_unstable : std_logic_vector(5 downto 0) := (others => '0');
+
 begin
 
 
@@ -108,6 +111,7 @@ idelay2_cnt_out_buf <= idelay2_cnt_out;
 --Controller, der dann in die jeweiligen anderen Zustandsautomaten springt 
 FSM_MAIN_PROC: process(sysclk)
 variable sum : std_logic_vector(idelay2_cnt_out'left downto 0) := (others => '0');
+variable dif: std_logic_vector(idelay2_cnt_out'left downto 0) := (others => '0');
 begin
     if rising_edge(sysclk) then
         if rst = '1' then
@@ -137,9 +141,7 @@ begin
                     --solange bis wieder unstabil
                     if stab_err = '1'  then 
                         STATE_MAIN <= CHECK2UNSTABLE;
-                           
-                   --     stab_pending <= '0';
-                  --      idelay_ld_buf <= '1';
+                        first_unstable <= idelay2_cnt_out_buf;
                     --Kann unstabilen zustand nicht finden in dieser richtung 
                     --FEHLER!
                     elsif idelay2_cnt_out_buf = idelay_limit then
@@ -152,25 +154,38 @@ begin
                     --solange bis wieder stabil
                     if stab_err = '0' then 
                         STATE_MAIN <= CHECK3STABLE;
-           --               STATE_MAIN <= FINAL_CHECK;
-                      --  idelay_ld_buf <= '1';
-                     
                         first_save <= std_logic_vector(unsigned(idelay2_cnt_out_buf)); --what an ugly horrible hack...
-                     end if;
+                    elsif idelay2_cnt_out_buf = idelay_limit then
+                        STATE_MAIN <= ERROR;
+                    end if;
+                    
+                    
+                    
+                    
                 when CHECK3STABLE =>
                     --solange bis wieder unstabil
-          --          idelay_ld_buf <= '0';
                     if stab_err = '1'  then
-                        STATE_MAIN <= DONE;
+                        STATE_MAIN <= STAB_DONE;
                         idelay_ld_buf <= '1';
                     else
                         second_save <= idelay2_cnt_out_buf;
                     end if;
-               when FINAL_CHECK =>
+                    
+                    
+                    --falls hier nicht mehr erreicht wird -> größeren der beiden bereiche verwenden
+                    if idelay2_cnt_out_buf = idelay_limit then
+                        dif := std_logic_vector(unsigned(idelay_limit) - unsigned(first_save));
+                        if first_unstable > dif then
+                            --erster bereich ist größer als der aktuelle
+                            
+                        else
+                            --aktueller bereich ist größer als der alte
+                        end if;
+                    end if;
                     
                when ERROR => 
                
-               when DONE =>
+               when STAB_DONE =>
                    sum := std_logic_vector(unsigned(second_save) + unsigned(first_save));
                    counteridelay <= '0' & sum(sum'left downto 1);
                    STATE_MAIN <= RESET;

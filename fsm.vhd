@@ -72,6 +72,7 @@ type FSM_STAB is(
                 CHECK_START,
                 SUCCESS,
                 CHECK,
+                WAITFOR,
                 ERROR);
 signal STATE_FSM : FSM_STAB :=  RESET;
                  
@@ -86,10 +87,6 @@ SIGNAL STATE_WORD : FSM_WORD := RESET;
                  
 signal word_pending : std_logic := '0';                 
 signal bitslip_buf : std_logic := '0';                 
-                 
-                 
-                 
-                 
                      
 signal idelay_ld : std_logic := '0'; --init
 
@@ -120,6 +117,11 @@ signal second_save: std_logic_vector(idelay2_cnt_out'left downto 0) := (others =
 
 signal first_unstable : std_logic_vector(4 downto 0) := (others => '0');
 signal zeros : std_logic_vector(4 downto 0) := (others => '0');
+
+signal lastbit_old : std_logic := '0';
+signal lastbit_new : std_logic := '0';
+
+
 begin
 
 
@@ -141,7 +143,6 @@ begin
                      o_done <= '0';
                      idelay_ld_buf <= '0';
                      stab_pending <= '0';
-                     ce_buf <= '0';
                     --Stabilitäts Check wird angefragt
                      --Muss hier unten stehen für die höhere Priorisierung! 
                      if idelay_ctrl_rdy = '1' and resync = '1' then
@@ -151,13 +152,11 @@ begin
                          idelay_ld_buf <= '1';
                      end if;
                      
-                     
                 --@Zustand: Checkt solange bis Unstabil     
                 when CHECK1STABLE =>
+
                     --solange bis unstabil
                     idelay_ld_buf <= '0';
-                    ce_buf <= stab_ack;
-               --     ce_buf <= '1';
                     --solange bis wieder unstabil
                     if stab_err = '1'  then
                         --_____
@@ -173,10 +172,10 @@ begin
 
                 --@Zustand Checkt solange bis Stabil    
                 when CHECK2UNSTABLE =>
-                    stab_pending <= '1';
+                --    stab_pending <= '1';
                     idelay_ld_buf <= '0';
                     --solange bis wieder stabil                  
-                    ce_buf <= stab_ack;
+                    --ce_buf <= stab_ack;
                     if stab_err = '0' then 
                     --_____                                  __
                     --_____ first_unstable_XXXXXXX_first_save__
@@ -204,7 +203,7 @@ begin
                         second_save <= std_logic_vector(unsigned(idelay2_cnt_out_buf) - 1);
                     end if;
                     
-                    ce_buf <= stab_ack;
+                 --   ce_buf <= stab_ack;
                     --falls hier nicht mehr erreicht wird -> größeren der beiden bereiche verwenden
                     if idelay2_cnt_out_buf = idelay_limit then
                         dif := std_logic_vector(unsigned(idelay_limit) - unsigned(first_save));
@@ -232,7 +231,7 @@ begin
               
               
               when WD_ALIGN1 => 
-               
+               idelay_ld_buf <= '0';
             end case;
             
         end if;
@@ -282,40 +281,32 @@ if rising_edge(pix_clk) then
                 data_s <= data;
             end if;
             
-            if stab_pending = '0' then
-                STATE_FSM <= RESET;
-            end if;
-            
-
         when SUCCESS =>
             data_s <= data;
-            counter <= std_logic_vector(unsigned(counter) + 1);
-       --     stab_ack <= '1';
-       --     stab_err <= '0';
-            STATE_FSM <= CHECK;
-    --        data_s <= data;
-            if stab_pending = '1' then
-                STATE_FSM <= CHECK;
-            else
-                STATE_FSM <= RESET;
-             end if;
-            
+            counter <= (others => '0');
+
+            STATE_FSM <= WAITFOR;
+            stab_err <= '0';
         when ERROR => 
             --counter <= (others=>'0');
            
            counter <= (others => '0');
-           
            data_s <= data;
-           counter <= std_logic_vector(unsigned(counter) + 1);
-           
-           -- stab_ack <= '1';
-            --stab_err <= '1';
-            if stab_pending = '1' then
+           --counter <= std_logic_vector(unsigned(counter) + 1);
+            stab_err <= '1';
+            STATE_FSM <= WAITFOR;
+        when WAITFOR =>
+            lastbit_old <= lastbit_new;
+            lastbit_new <= idelay2_cnt_out_buf(0);
+            ce_buf <= '1';
+            --nur wenn hochgezählt wurde darf weiter gecheckt werden
+            if (lastbit_old xor lastbit_new) = '1' then
                 STATE_FSM <= CHECK;
-                data_s <= data;
-            else
-                STATE_FSM <= RESET;       
+                ce_buf <= '0';
             end if;
+            if stab_pending = '0' then
+                STATE_FSM <= RESET;
+            end if;            
     end case;
 end if;
 end process FSM_STAB_CHK;

@@ -21,7 +21,9 @@
 
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
-
+--werden für dynamische berechnung benötigt
+use IEEE.math_real."ceil";
+use IEEE.math_real."log2";
 -- Uncomment the following library declaration if using
 -- arithmetic functions with Signed or Unsigned values
 use IEEE.NUMERIC_STD.ALL;
@@ -32,6 +34,11 @@ use IEEE.NUMERIC_STD.ALL;
 --use UNISIM.VComponents.all;
 
 entity FSM is
+    generic(
+        trainings_pattern : std_logic_vector := x"5c";
+        limit : std_logic_vector := x"4"
+        
+    );
     Port ( sysclk : in STD_LOGIC;
            pix_clk : in STD_LOGIC;
            rst : in STD_LOGIC;
@@ -63,6 +70,7 @@ type FSM_MAIN is(
                     CHECK3STABLE, 
                     ERROR,
                     STAB_DONE,
+                    WAITFOR1,
                     WD_ALIGN1
                     );
 signal STATE_MAIN : FSM_MAIN := RESET; --Initialwert
@@ -80,13 +88,28 @@ signal STATE_FSM : FSM_STAB :=  RESET;
 type FSM_WORD is(
     RESET,
     CHECK,
-    ERROR
-);                    
+    ERROR,
+    DONE,
+    INCR,
+    WAIT1
+ --   WAIT2,
+ --   WAIT3
+);         
+
+
+           
 SIGNAL STATE_WORD : FSM_WORD := RESET;        
-                 
+ 
+signal data_buf : std_logic_vector(data'left downto 0) := (others => '0');                 
                  
 signal word_pending : std_logic := '0';                 
 signal bitslip_buf : std_logic := '0';                 
+signal word_ack : std_logic := '0';
+signal word_err : std_logic := '0';
+
+signal wd_count : std_logic_vector(integer(ceil(log2(real(data'left)))) downto 0) := (others => '0');
+signal max_wd_count : std_logic_vector(integer(ceil(log2(real(data'left)))) downto 0) := (others => '1');
+
                      
 signal idelay_ld : std_logic := '0'; --init
 
@@ -95,17 +118,17 @@ signal stab_ack : std_logic := '0';
 signal stab_err: std_logic := '0';
 
 
-signal word_ack : std_logic := '0';
+
 
 signal counter : std_logic_vector(3 downto 0) := (others=>'0');
-signal limit : std_logic_vector(3 downto 0) := "0100";
+--signal limit : std_logic_vector(3 downto 0) := "0100";
 
 signal idelay_limit : std_logic_vector(idelay2_tab_preset'left downto 0) := (others => '1');
 
 signal counteridelay : std_logic_vector(idelay2_tab_preset'left downto 0) := (others => '0');
 
 signal data_s : std_logic_vector(data'left downto 0) := (others=>'0');
-
+signal data_w : std_logic_vector(data'left downto 0) := (others => '0');
 
 signal idelay_ld_buf : std_logic := '0';
 signal ce_buf : std_logic := '0';
@@ -120,7 +143,7 @@ signal zeros : std_logic_vector(4 downto 0) := (others => '0');
 
 signal lastbit_old : std_logic := '0';
 signal lastbit_new : std_logic := '0';
-
+signal idelay_ctrl_rdy_buf : std_logic := '0';
 
 begin
 
@@ -129,7 +152,7 @@ iserdese2_bitslip <= bitslip_buf;
 idelay2_cnt_out_buf <= idelay2_cnt_out;
 --Controller, der dann in die jeweiligen anderen Zustandsautomaten springt 
 FSM_MAIN_PROC: process(sysclk)
-variable sum : std_logic_vector(idelay2_cnt_out'left downto 0) := (others => '0');
+variable sum : std_logic_vector(idelay2_cnt_out'left + 1 downto 0) := (others => '0');
 variable dif: std_logic_vector(idelay2_cnt_out'left downto 0) := (others => '0');
 begin
     if rising_edge(sysclk) then
@@ -223,23 +246,32 @@ begin
                when ERROR => 
                
                when STAB_DONE =>
-                   sum := std_logic_vector(unsigned(second_save) + unsigned(first_save));
-                   counteridelay <= '0' & sum(sum'left downto 1);
-                   STATE_MAIN <= WD_ALIGN1;
+                   --sum := std_logic_vector(unsigned(second_save) + unsigned(first_save));
+                   sum := std_logic_vector(unsigned('0' & second_save) + unsigned('0' & first_save));
+                                    
+                   counteridelay <= sum(sum'left downto 1);
                    idelay_ld_buf <= '1';
                    stab_pending <= '0';
-              
-              
+                   if idelay_ctrl_rdy_buf = '1' then
+                    STATE_MAIN <= WAITFOR1;
+                   end if;
+              --Verzögerung einführen
+              when WAITFOR1 =>
+                STATE_MAIN <= WD_ALIGN1;
+                idelay_ld_buf <= '0';
+                               
               when WD_ALIGN1 => 
-               idelay_ld_buf <= '0';
+               word_pending <= '1';
             end case;
             
         end if;
     end if;
 end process FSM_MAIN_PROC;
+
 idelay2_tab_preset <= counteridelay;
 idelay2_ld <= idelay_ld_buf;
 ce <= ce_buf;
+idelay_ctrl_rdy_buf <= idelay_ctrl_rdy;
 --stability check 
 --Muss mit dem Pixeltakt getaktet werden (?)
 --Checkt ob der ABSTASTZEITPUNKT korrekt ist
@@ -248,8 +280,8 @@ begin
 if rising_edge(pix_clk) then
     case STATE_FSM is
         when RESET =>
-            data_s <= data;
-            counter <= "0001";
+            
+            counter <= (others => '0');
             data_s <= (others => '0');
             if stab_pending = '1' then
                 STATE_FSM <= CHECK_START;
@@ -306,6 +338,7 @@ if rising_edge(pix_clk) then
             end if;
             if stab_pending = '0' then
                 STATE_FSM <= RESET;
+                ce_buf <= '0';
             end if;            
     end case;
 end if;
@@ -316,6 +349,44 @@ end process FSM_STAB_CHK;
 FSM_WORD_ALIGN: process(pix_clk)
 begin
 if rising_edge(pix_clk) then
+    case STATE_WORD is 
+        when RESET =>
+            word_ack <= '0';
+            word_err <= '1';
+            wd_count <= (others => '0');
+            if word_pending = '1' then
+                STATE_WORD <= WAIT1;
+               -- data_w <= data;
+            end if;
+        when CHECK =>
+            if data = trainings_pattern then
+                --Erfolg :)
+                STATE_WORD <= DONE;
+            elsif wd_count = max_wd_count then
+                STATE_WORD <= ERROR;
+            else
+                STATE_WORD <= INCR;
+                bitslip_buf <= '1';
+                data_w <= data;
+            end if;
+        when INCR =>
+            bitslip_buf <= '0';
+            STATE_WORD <= WAIT1;
+        when WAIT1 =>
+         --   bitslip_buf <= '0';
+            if data /= data_w then
+                STATE_WORD <= CHECK;
+            end if;
+    --    when WAIT2 =>    
+    --        STATE_WORD <= WAIT3;
+    --    when WAIT3 =>    
+    --            STATE_WORD <= CHECK;
+        when ERROR =>
+            word_ack <= '1';
+            word_err <= '1';
+        when DONE =>    
+            word_ack <= '1';
+        end case;
 
 end if;
 end process FSM_WORD_ALIGN;

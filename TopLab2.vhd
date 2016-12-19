@@ -67,9 +67,9 @@ component FSM is
        data : in STD_LOGIC_VECTOR(7 downto 0);
        ce : out std_logic;
        o_done : out STD_LOGIC;
-       o_err : out STD_LOGIC);
+       o_err : out STD_LOGIC;
        
-   --    o_locked : out STD_LOGIC);
+       o_locked : out STD_LOGIC);
 end component FSM;
 
 
@@ -366,11 +366,10 @@ begin
               ce => ce_buf,
               -- external signals
               o_done               =>  o_done,
-              o_err                =>  o_err
+              o_err                =>  o_err,
               
-       --       o_locked             =>  o_locked
+             o_locked             =>  o_locked
               );
-
 
 
 end block ISERDES;

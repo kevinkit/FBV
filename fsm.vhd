@@ -58,8 +58,8 @@ entity FSM is
            data : in STD_LOGIC_VECTOR(7 downto 0);
            ce : out std_logic;
            o_done : out STD_LOGIC;
-           o_err : out STD_LOGIC);
-       --    o_locked : out STD_LOGIC);
+           o_err : out STD_LOGIC;
+           o_locked : out STD_LOGIC);
 end FSM;
 
 architecture Behavioral of FSM is
@@ -71,7 +71,8 @@ type FSM_MAIN is(
                     ERROR,
                     STAB_DONE,
                     WAITFOR1,
-                    WD_ALIGN1
+                    WD_ALIGN1,
+                    DONE
                     );
 signal STATE_MAIN : FSM_MAIN := RESET; --Initialwert
 
@@ -145,6 +146,8 @@ signal lastbit_old : std_logic := '0';
 signal lastbit_new : std_logic := '0';
 signal idelay_ctrl_rdy_buf : std_logic := '0';
 
+signal fatal_error : std_logic := '0';
+
 begin
 
 
@@ -174,7 +177,7 @@ begin
                          stab_pending <= '1';
                          idelay_ld_buf <= '1';
                      end if;
-                     
+                     o_locked <= '1';
                 --@Zustand: Checkt solange bis Unstabil     
                 when CHECK1STABLE =>
 
@@ -193,6 +196,9 @@ begin
                         STATE_MAIN <= ERROR;
                     end if;
 
+                    if fatal_error = '1' then
+                        STATE_MAIN <= ERROR;
+                    end if;
                 --@Zustand Checkt solange bis Stabil    
                 when CHECK2UNSTABLE =>
                 --    stab_pending <= '1';
@@ -209,6 +215,7 @@ begin
                     
                     if first_unstable = zeros and idelay2_cnt_out_buf = idelay_limit then
                         STATE_MAIN <= ERROR; --war von anfang im XXX drin und ist nie raus gekommen!
+                        fatal_error <= '1';
                     elsif idelay2_cnt_out_buf = idelay_limit then
                         --war am anfang stabil kommt aber nie aus dem unstabilen zustand raus
                         first_save <= (others => '0');
@@ -243,8 +250,19 @@ begin
                         end if;
                     end if;
                     
-               when ERROR => 
+               when ERROR =>
+                    o_err <= '1';
+                   if rst = '1' then
+                    STATE_MAIN <= RESET;
+                   end if;
                
+                
+                   if idelay_ctrl_rdy = '1' and resync = '1' then
+                       STATE_MAIN <= CHECK1STABLE;
+                       --Benachrichtigung an andere FSM geben
+                       stab_pending <= '1';
+                       idelay_ld_buf <= '1';
+                   end if;
                when STAB_DONE =>
                    --sum := std_logic_vector(unsigned(second_save) + unsigned(first_save));
                    sum := std_logic_vector(unsigned('0' & second_save) + unsigned('0' & first_save));
@@ -262,6 +280,18 @@ begin
                                
               when WD_ALIGN1 => 
                word_pending <= '1';
+               if word_ack = '1' then
+                word_pending <= '0';
+                STATE_MAIN <= DONE;
+                if word_err = '1' then
+                    STATE_MAIN <= ERROR;
+                end if;
+               end if;
+               
+               when DONE =>
+                o_done <= '1';
+                STATE_MAIN <= RESET;
+               
             end case;
             
         end if;
@@ -351,12 +381,11 @@ begin
 if rising_edge(pix_clk) then
     case STATE_WORD is 
         when RESET =>
-            word_ack <= '0';
-            word_err <= '1';
             wd_count <= (others => '0');
             if word_pending = '1' then
                 STATE_WORD <= WAIT1;
-               -- data_w <= data;
+                word_ack <= '0';
+                word_err <= '0';
             end if;
         when CHECK =>
             if data = trainings_pattern then
@@ -384,8 +413,11 @@ if rising_edge(pix_clk) then
         when ERROR =>
             word_ack <= '1';
             word_err <= '1';
+            STATE_WORD <= RESET;
         when DONE =>    
             word_ack <= '1';
+            word_err <= '0';
+            STATE_WORD <= RESET;
         end case;
 
 end if;

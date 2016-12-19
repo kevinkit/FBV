@@ -109,8 +109,8 @@ signal word_ack : std_logic := '0';
 signal word_err : std_logic := '0';
 
 signal wd_count : std_logic_vector(integer(ceil(log2(real(data'left)))) downto 0) := (others => '0');
-signal max_wd_count : std_logic_vector(integer(ceil(log2(real(data'left)))) downto 0) := (others => '1');
-
+--signal max_wd_count : std_logic_vector(integer(ceil(log2(real(data'left)))) downto 0) := std_logic_vector(unsigned(data'left));
+--constant wd_zeros : std_logic_vector(
                      
 signal idelay_ld : std_logic := '0'; --init
 
@@ -118,6 +118,11 @@ signal stab_pending : std_logic := '0'; --0 --> init
 signal stab_ack : std_logic := '0';
 signal stab_err: std_logic := '0';
 
+
+
+signal o_locked_buf1 : std_logic := '0';
+signal o_locked_buf2 : std_logic := '0';
+signal o_locked_buf3 : std_logic := '0';
 
 
 
@@ -176,11 +181,12 @@ begin
                          --Benachrichtigung an andere FSM geben
                          stab_pending <= '1';
                          idelay_ld_buf <= '1';
+                         counteridelay <= (others => '0');
                      end if;
-                     o_locked <= '1';
+                     o_locked_buf1 <= '1';
                 --@Zustand: Checkt solange bis Unstabil     
                 when CHECK1STABLE =>
-
+                    o_locked_buf1 <= '0';
                     --solange bis unstabil
                     idelay_ld_buf <= '0';
                     --solange bis wieder unstabil
@@ -302,6 +308,9 @@ idelay2_tab_preset <= counteridelay;
 idelay2_ld <= idelay_ld_buf;
 ce <= ce_buf;
 idelay_ctrl_rdy_buf <= idelay_ctrl_rdy;
+o_locked <= o_locked_buf1 and o_locked_buf2 and o_locked_buf3;
+
+
 --stability check 
 --Muss mit dem Pixeltakt getaktet werden (?)
 --Checkt ob der ABSTASTZEITPUNKT korrekt ist
@@ -310,7 +319,7 @@ begin
 if rising_edge(pix_clk) then
     case STATE_FSM is
         when RESET =>
-            
+            o_locked_buf2 <= '1';
             counter <= (others => '0');
             data_s <= (others => '0');
             if stab_pending = '1' then
@@ -323,6 +332,7 @@ if rising_edge(pix_clk) then
           --  stab_ack <= '1';
         when CHECK =>
             --wenn Daten aus dem letzten Takt ungleich 
+            o_locked_buf2 <= '0';
             stab_ack <= '0';
             if counter /= limit then
                 if data_s = data then
@@ -381,23 +391,38 @@ begin
 if rising_edge(pix_clk) then
     case STATE_WORD is 
         when RESET =>
-            wd_count <= (others => '0');
+            o_locked_buf3 <= '1';
+             word_ack <= '0';
+            word_err <= '0';
+            wd_count(0) <= '1';
+     --       wd_count <= (others => '0');
             if word_pending = '1' then
                 STATE_WORD <= WAIT1;
                 word_ack <= '0';
                 word_err <= '0';
             end if;
         when CHECK =>
+            o_locked_buf3 <= '0';
             if data = trainings_pattern then
                 --Erfolg :)
                 STATE_WORD <= DONE;
-            elsif wd_count = max_wd_count then
+                word_ack <= '1';
+                word_err <= '0';
+                
+            elsif wd_count = (wd_count'range => '0') then
                 STATE_WORD <= ERROR;
+                
+                word_ack <= '1';
+                word_err <= '1';
+                
             else
                 STATE_WORD <= INCR;
+                wd_count <= std_logic_vector(unsigned(wd_count) + 1);
                 bitslip_buf <= '1';
                 data_w <= data;
             end if;
+            
+            
         when INCR =>
             bitslip_buf <= '0';
             STATE_WORD <= WAIT1;
@@ -414,10 +439,19 @@ if rising_edge(pix_clk) then
             word_ack <= '1';
             word_err <= '1';
             STATE_WORD <= RESET;
+            wd_count <= (others => '0');
         when DONE =>    
             word_ack <= '1';
             word_err <= '0';
-            STATE_WORD <= RESET;
+            
+            if word_pending = '1' then
+                STATE_WORD <= CHECK;
+            else
+                STATE_WORD <= RESET;
+            end if;
+            
+   
+            wd_count <= (others => '0');
         end case;
 
 end if;

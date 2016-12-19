@@ -52,6 +52,9 @@ end TOPlab2;
 		
 architecture Behavioral of TOPlab2 is
 
+
+
+
 component FSM is
     Port ( sysclk : in STD_LOGIC;
        pix_clk : in STD_LOGIC;
@@ -125,14 +128,12 @@ signal i_bitslip : std_logic := '0';
 --rst
 signal rst_buf : std_logic := '0';
 
-
-
 --FSM
 signal ce_buf : std_logic := '0';
 
 
 
-
+signal o_locked_buf : std_logic := '0';
 
 
 
@@ -239,7 +240,7 @@ begin
     );
     
     --Rausschreiben
-    o_locked <= idelay_rdy_buff;
+    o_locked <= idelay_rdy_buff and o_locked_buf; --kommt von der Zustandsmaschine
     nidelay_rdy_buff <= not idelay_rdy_buff;
     
     
@@ -368,7 +369,7 @@ begin
               o_done               =>  o_done,
               o_err                =>  o_err,
               
-             o_locked             =>  o_locked
+             o_locked             =>  o_locked_buf
               );
 
 

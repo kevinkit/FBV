@@ -92,7 +92,9 @@ type FSM_WORD is(
     ERROR,
     DONE,
     INCR,
-    WAIT1
+    WAIT1,
+    HOLDERR,
+    HOLDERR2
  --   WAIT2,
  --   WAIT3
 );         
@@ -104,11 +106,24 @@ SIGNAL STATE_WORD : FSM_WORD := RESET;
 signal data_buf : std_logic_vector(data'left downto 0) := (others => '0');                 
                  
 signal word_pending : std_logic := '0';                 
-signal bitslip_buf : std_logic := '0';                 
 signal word_ack : std_logic := '0';
 signal word_err : std_logic := '0';
 
-signal wd_count : std_logic_vector(integer(ceil(log2(real(data'left)))) downto 0) := (others => '0');
+
+signal word_pending_buf1 : std_logic := '0';
+signal word_ack_buf1 : std_logic := '0';
+signal word_err_buf1 : std_logic := '0';
+
+signal o_done_buf : std_logic := '0';
+
+signal word_pending_buf2 : std_logic := '0';
+signal word_ack_buf2 : std_logic := '0';
+signal word_err_buf2 : std_logic := '0';
+
+
+signal bitslip_buf : std_logic := '0';                 
+
+signal wd_count : std_logic_vector((integer(ceil(log2(real(data'left)))) -1) downto 0) := (others => '0');
 --signal max_wd_count : std_logic_vector(integer(ceil(log2(real(data'left)))) downto 0) := std_logic_vector(unsigned(data'left));
 --constant wd_zeros : std_logic_vector(
                      
@@ -119,6 +134,14 @@ signal stab_ack : std_logic := '0';
 signal stab_err: std_logic := '0';
 
 
+signal stab_pending_buf1 : std_logic := '0'; --0 --> init
+signal stab_ack_buf1 : std_logic := '0';
+signal stab_err_buf1: std_logic := '0';
+
+
+signal stab_pending_buf2 : std_logic := '0'; --0 --> init
+signal stab_ack_buf2 : std_logic := '0';
+signal stab_err_buf2: std_logic := '0';
 
 signal o_locked_buf1 : std_logic := '0';
 signal o_locked_buf2 : std_logic := '0';
@@ -158,6 +181,7 @@ begin
 
 iserdese2_bitslip <= bitslip_buf;
 idelay2_cnt_out_buf <= idelay2_cnt_out;
+o_done <= o_done_buf;
 --Controller, der dann in die jeweiligen anderen Zustandsautomaten springt 
 FSM_MAIN_PROC: process(sysclk)
 variable sum : std_logic_vector(idelay2_cnt_out'left + 1 downto 0) := (others => '0');
@@ -168,16 +192,28 @@ begin
             --wenn geresetet wird
             STATE_MAIN <= RESET; --Anfangszustand
         else
+            --single synchronizer
+            stab_err_buf1 <= stab_err;
+            stab_err_buf2 <= stab_err_buf1;
+            stab_ack_buf1 <= stab_ack;
+            stab_ack_buf2 <= stab_ack_buf1;
+            
+            word_err_buf1 <= word_err;
+            word_err_buf2 <= word_err_buf1;
+            word_ack_buf1 <= word_ack;
+            word_ack_buf2 <= word_ack_buf1;
+        
             case STATE_MAIN is
                 when RESET =>
                      o_err <= '0';
-                     o_done <= '0';
+                  --   o_done <= '0';
                      idelay_ld_buf <= '0';
                      stab_pending <= '0';
                     --Stabilitäts Check wird angefragt
                      --Muss hier unten stehen für die höhere Priorisierung! 
                      if idelay_ctrl_rdy = '1' and resync = '1' then
                          STATE_MAIN <= CHECK1STABLE;
+                         o_done_buf <= '0';
                          --Benachrichtigung an andere FSM geben
                          stab_pending <= '1';
                          idelay_ld_buf <= '1';
@@ -190,7 +226,7 @@ begin
                     --solange bis unstabil
                     idelay_ld_buf <= '0';
                     --solange bis wieder unstabil
-                    if stab_err = '1'  then
+                    if stab_err_buf2 = '1'  then
                         --_____
                         --_____ first_unstable_X...
                      
@@ -211,12 +247,12 @@ begin
                     idelay_ld_buf <= '0';
                     --solange bis wieder stabil                  
                     --ce_buf <= stab_ack;
-                    if stab_err = '0' then 
+                    if stab_err_buf2 = '0' then 
                     --_____                                  __
                     --_____ first_unstable_XXXXXXX_first_save__
                                 
                         STATE_MAIN <= CHECK3STABLE;
-                        first_save <= std_logic_vector(unsigned(idelay2_cnt_out_buf)); --what an ugly horrible hack...
+                        first_save <= std_logic_vector(unsigned(idelay2_cnt_out_buf)); 
                     end if;
                     
                     if first_unstable = zeros and idelay2_cnt_out_buf = idelay_limit then
@@ -232,7 +268,7 @@ begin
                 --@Zustand Checkt solange bis UnStabil  
                 when CHECK3STABLE =>
                     --solange bis wieder unstabil
-                    if stab_err = '1'  then
+                    if stab_err_buf2 = '1'  then
                         STATE_MAIN <= STAB_DONE;
                         idelay_ld_buf <= '1';
                     else
@@ -286,16 +322,16 @@ begin
                                
               when WD_ALIGN1 => 
                word_pending <= '1';
-               if word_ack = '1' then
+               if word_ack_buf2 = '1' then
                 word_pending <= '0';
                 STATE_MAIN <= DONE;
-                if word_err = '1' then
+                if word_err_buf2 = '1' then
                     STATE_MAIN <= ERROR;
                 end if;
                end if;
                
                when DONE =>
-                o_done <= '1';
+                o_done_buf <= '1';
                 STATE_MAIN <= RESET;
                
             end case;
@@ -317,15 +353,20 @@ o_locked <= o_locked_buf1 and o_locked_buf2 and o_locked_buf3;
 FSM_STAB_CHK: process(pix_clk)
 begin
 if rising_edge(pix_clk) then
+    stab_pending_buf1 <= stab_pending;
+    stab_pending_buf2 <= stab_pending_buf1;
+
     case STATE_FSM is
         when RESET =>
             o_locked_buf2 <= '1';
             counter <= (others => '0');
             data_s <= (others => '0');
-            if stab_pending = '1' then
+            if stab_pending_buf2 = '1' then
                 STATE_FSM <= CHECK_START;
             end if;
             stab_ack <= '0';
+            stab_err <= '0';
+            lastbit_old <= idelay2_cnt_out_buf(0);
         when CHECK_START => 
             STATE_FSM <= CHECK;
             data_s <= data;
@@ -336,13 +377,14 @@ if rising_edge(pix_clk) then
             stab_ack <= '0';
             if counter /= limit then
                 if data_s = data then
-                counter <= std_logic_vector(unsigned(counter) + 1);
+                    counter <= std_logic_vector(unsigned(counter) + 1);
                     data_s <= data;
                 else
                     STATE_FSM <= ERROR;
                     counter <= (others=>'0');
                     stab_ack <= '1';
                     stab_err <= '1';
+              --      ce_buf <= '1';
                 end if;
             else
                 STATE_FSM <= SUCCESS;
@@ -351,6 +393,8 @@ if rising_edge(pix_clk) then
                 stab_ack <= '1';
                 stab_err <= '0';
                 data_s <= data;
+                
+              --  ce_buf <= '1';
             end if;
             
         when SUCCESS =>
@@ -359,7 +403,9 @@ if rising_edge(pix_clk) then
 
             STATE_FSM <= WAITFOR;
             stab_err <= '0';
+            ce_buf <= '1';
         when ERROR => 
+            ce_buf <= '1';
             --counter <= (others=>'0');
            
            counter <= (others => '0');
@@ -367,16 +413,16 @@ if rising_edge(pix_clk) then
            --counter <= std_logic_vector(unsigned(counter) + 1);
             stab_err <= '1';
             STATE_FSM <= WAITFOR;
+        --    lastbit_old <= idelay2_cnt_out_buf(0);
         when WAITFOR =>
-            lastbit_old <= lastbit_new;
-            lastbit_new <= idelay2_cnt_out_buf(0);
-            ce_buf <= '1';
+           
             --nur wenn hochgezählt wurde darf weiter gecheckt werden
-            if (lastbit_old xor lastbit_new) = '1' then
+            if (lastbit_old xor idelay2_cnt_out_buf(0)) = '1' then
                 STATE_FSM <= CHECK;
+                lastbit_old <= idelay2_cnt_out_buf(0);
                 ce_buf <= '0';
             end if;
-            if stab_pending = '0' then
+            if stab_pending_buf2 = '0' then
                 STATE_FSM <= RESET;
                 ce_buf <= '0';
             end if;            
@@ -389,6 +435,13 @@ end process FSM_STAB_CHK;
 FSM_WORD_ALIGN: process(pix_clk)
 begin
 if rising_edge(pix_clk) then
+    word_pending_buf1 <= word_pending;
+    word_pending_buf2 <= word_pending_buf1;
+    
+    if rst = '1' then
+        STATE_WORD <= RESET;
+   else 
+    
     case STATE_WORD is 
         when RESET =>
             o_locked_buf3 <= '1';
@@ -396,10 +449,11 @@ if rising_edge(pix_clk) then
             word_err <= '0';
             wd_count(0) <= '1';
      --       wd_count <= (others => '0');
-            if word_pending = '1' then
-                STATE_WORD <= WAIT1;
+            if word_pending_buf2 = '1' then
+                STATE_WORD <= CHECK;
                 word_ack <= '0';
                 word_err <= '0';
+          --      data_w <= data;
             end if;
         when CHECK =>
             o_locked_buf3 <= '0';
@@ -431,28 +485,29 @@ if rising_edge(pix_clk) then
             if data /= data_w then
                 STATE_WORD <= CHECK;
             end if;
-    --    when WAIT2 =>    
-    --        STATE_WORD <= WAIT3;
-    --    when WAIT3 =>    
-    --            STATE_WORD <= CHECK;
         when ERROR =>
             word_ack <= '1';
             word_err <= '1';
-            STATE_WORD <= RESET;
+            STATE_WORD <= ERROR;
+           -- STATE_WORD <= HOLDERR;
+            
             wd_count <= (others => '0');
         when DONE =>    
             word_ack <= '1';
             word_err <= '0';
             
-            if word_pending = '1' then
-                STATE_WORD <= CHECK;
+            if word_pending_buf2 = '1' then
+                STATE_WORD <= DONE;
             else
                 STATE_WORD <= RESET;
             end if;
-            
-   
-            wd_count <= (others => '0');
+             wd_count <= (others => '0');
+        when HOLDERR =>
+            STATE_WORD <= HOLDERR2;
+        when HOLDERR2 =>
+            STATE_WORD <= RESET;
         end case;
+        end if;
 
 end if;
 end process FSM_WORD_ALIGN;

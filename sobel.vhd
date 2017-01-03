@@ -24,7 +24,7 @@ use IEEE.STD_LOGIC_1164.ALL;
 
 -- Uncomment the following library declaration if using
 -- arithmetic functions with Signed or Unsigned values
---use IEEE.NUMERIC_STD.ALL;
+use IEEE.NUMERIC_STD.ALL;
 
 -- Uncomment the following library declaration if instantiating
 -- any Xilinx leaf cells in this code.
@@ -64,7 +64,7 @@ component blk_mem_gen_0 IS
   PORT (
     clka : IN STD_LOGIC;
   ena : IN STD_LOGIC;
-  addra : IN STD_LOGIC_VECTOR(15 DOWNTO 0);
+  addra : IN STD_LOGIC_VECTOR(10 DOWNTO 0);
   douta : OUT STD_LOGIC_VECTOR(7 DOWNTO 0)
   );
 END component blk_mem_gen_0;
@@ -79,9 +79,7 @@ signal rd_en_fifo1_buf  : std_logic := '0';
 signal data_fifo1  : std_logic_vector(i_video'left downto 0) := (others => '0');
 
 
---zwei register um die erste zeile solange zwischen zu speichern bis sie benötigt wird 
-signal reg1 : std_logic_vector(i_video'left downto 0) := (others => '0');
-signal reg2 : std_logic_vector(i_video'left downto 0) := (others => '0');
+
 
 --Fifo 2
 signal wr_en_fifo2 : std_logic := '0';
@@ -94,14 +92,31 @@ signal lval_buffer : std_logic := '0';
 signal fifo1_full : std_logic := '0';
 
 signal edge_detected   : std_logic_vector(7 downto 0)   := (others => '0');
-signal sqrt_addr       : std_logic_vector(15 downto 0) := (others => '0');
+signal sqrt_addr       : std_logic_vector(10 downto 0) := (others => '0');
 
 signal i_video_d1 : std_logic_vector(i_video'left downto 0) := (others => '0');
 signal i_video_d2 : std_logic_vector(i_video'left downto 0) := (others => '0');
 signal i_video_d3 : std_logic_vector(i_video'left downto 0) := (others => '0');
 
-signal fifo1_d : std_logic_vector(i'video_left downto 0) := (others => '0');
-signal fifo2_d : std_logic_vector(i'video_left downto 0) := (others => '0');
+signal fifo1_d : std_logic_vector(i_video'left downto 0) := (others => '0');
+signal fifo2_d : std_logic_vector(i_video'left downto 0) := (others => '0');
+
+signal reg1 : std_logic_vector(i_video'left downto 0) := (others => '0');
+signal reg2 : std_logic_vector(i_video'left downto 0) := (others => '0');
+
+signal dx : std_logic_vector(i_video'left downto 0) := (others => '0');
+signal dx_s : std_logic_vector((i_video'left*2) +1 downto 0) := (others => '0');
+signal dy : std_logic_vector(i_video'left downto 0) := (others => '0');
+signal dy_s : std_logic_vector((i_video'left*2) +1 downto 0) := (others => '0');
+
+signal sum : std_logic_vector((i_video'left*2) + 2 downto 0) := (others => '0');
+signal sum_c : std_logic_vector((i_video'left*2) + 1 downto 0) := (others => '0');
+
+signal fval_buf : std_logic := '0';
+
+signal fval_shift_reg : std_logic_vector(8 downto 0) := (others => '0');
+signal lval_shift_reg : std_logic_vector(8 downto 0) := (others => '0');
+
 
 begin
 
@@ -142,6 +157,7 @@ if rising_edge(clk) then
     --Kantendetektor auf fallende Flanke
     if i_lval = '0' and lval_buffer = '1' then
             fifo1_full <= '1';
+            fval_buf <= '1';
     end if;
 
 end if;
@@ -150,23 +166,106 @@ end process EDGE_DETECTION;
 DELAY : process(clk)
 begin
 if rising_edge(clk) then
-    --Es müssen die lval und framevalids verzögert werden - eigentlich um 2 Takte ? 
+    --Es müssen die lval und framevalids verzögert werden - eigentlich um 9 Takte ? 
     
     
-    --Pro Zeile 1 mal
     i_video_d1 <= i_video; 
     i_video_d2 <= i_video_d1;
-    i_video_d3 <= i_video_d3;
     
+    i_video_d3 <= i_video_d2;
+    
+    
+       
     fifo1_d <= data_fifo1;
     fifo2_d <= data_fifo2;
+    
+    
+    --pixel delay
+    reg1 <= fifo1_d;
+    reg2 <= reg1;
+    
+    
+    
+    
+    fval_shift_reg <= fval_shift_reg(fval_shift_reg'left - 1 downto 0) & i_fval;
+    lval_shift_reg <= lval_shift_reg(lval_shift_reg'left - 1 downto 0) & i_lval;
+    
+    
+    o_fval <= fval_shift_reg(fval_shift_reg'left);
+    o_lval <= lval_shift_reg(lval_shift_reg'left);
+    
     
 end if;
 end process DELAY;
 
+PREWITT_PROC: process(clk) 
+begin
+if rising_edge(clk) then
+    
+    --Erstes "minus" --> Problem: Was ist wenn der Minuend größer ist als der subtrahend
+    --es muss nur dafür gesorgt werden dass kein Overflow / Underflow geschieht -
+    --in x Richtung ableiten ! (Dx)
+    --https://en.wikipedia.org/wiki/Prewitt_operator#Formulation
+   
+   
+   
+   
+   
+   
+   
+   
+   
+    if reg2 > fifo1_d then
+        dx <= std_logic_vector(unsigned(reg2) - unsigned(fifo1_d)); 
+    else
+        dx <= std_logic_vector(unsigned(fifo1_d) - unsigned(reg2));
+    end if;
+    
+    --Quadrat bilden (in x richtung)
+    dx_s <= std_logic_vector(unsigned(dx) * unsigned (dx)) ;
+    
+    --in y Ricthung ableiten (Dy)
+    if i_video_d3 > fifo2_d then
+        dy <= std_logic_vector(unsigned(i_video_d3) - unsigned(fifo2_d)); 
+    else
+        dy <= std_logic_vector(unsigned(fifo2_d) - unsigned(i_video_d3));
+    end if;
+    
+    dy_s <= std_logic_vector(unsigned(dy) * unsigned(dy));
+    
+    
+    sum <= std_logic_vector(unsigned('0' & dx_s) + unsigned('0' & dy_s));
+    
+    if sum(16) = '1' then
+        sum_c <= (others => '1');
+    else
+        sum_c <= sum(15 downto 0);
+    end if;
+    
+    --Was passiert wenn 10 downto 0 ? -- Ameisenkampf (gleichverteiltes Rauschen!) 
+    sqrt_addr <= sum_c(15 downto 5);
+end if;
+end process PREWITT_PROC;
+
+
+BINARYISE_PROC: process(clk)
+begin
+if rising_edge(clk) then
+    if i_bin_en = '1' then
+        if edge_detected >= i_bin_thresh then
+            o_video <= (others => '1');
+        else
+            o_video <= (others => '0');
+        end if; 
+    else
+        o_video <= edge_detected; --kommt von SQRT LUT
+    end if;
+end if;
+end process BINARYISE_PROC;
 
 --Read Enable, wenn fifo = full
 rd_en_fifo1 <= i_lval when fifo1_full = '1' else '0';
+
 
 --Die FIFOS wurde über den IP-Catalog eingefügt
 --Dort kann man bestimmen wie groß sie sein soll 

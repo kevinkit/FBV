@@ -1,22 +1,3 @@
-----------------------------------------------------------------------------------
--- Company: 
--- Engineer: 
--- 
--- Create Date: 28.12.2016 17:09:27
--- Design Name: 
--- Module Name: Top3 - Behavioral
--- Project Name: 
--- Target Devices: 
--- Tool Versions: 
--- Description: 
--- 
--- Dependencies: 
--- 
--- Revision:
--- Revision 0.01 - File Created
--- Additional Comments:
--- 
-----------------------------------------------------------------------------------
 
 
 library IEEE;
@@ -156,9 +137,9 @@ if rising_edge(clk) then
     
     --Kantendetektor auf fallende Flanke
     if i_lval = '0' and lval_buffer = '1' then
-            fifo1_full <= '1';
-            fval_buf <= '1';
-    end if;
+           fifo1_full <= '1';
+           fval_buf <= '1';
+   end if;
 
 end if;
 end process EDGE_DETECTION;
@@ -176,23 +157,23 @@ if rising_edge(clk) then
     
     
        
-    fifo1_d <= data_fifo1;
+  --  fifo1_d <= data_fifo1;
     fifo2_d <= data_fifo2;
     
     
     --pixel delay
-    reg1 <= fifo1_d;
+    reg1 <= data_fifo1;
     reg2 <= reg1;
     
     
     
     
-    fval_shift_reg <= fval_shift_reg(fval_shift_reg'left - 1 downto 0) & i_fval;
-    lval_shift_reg <= lval_shift_reg(lval_shift_reg'left - 1 downto 0) & i_lval;
+      fval_shift_reg <= fval_shift_reg(fval_shift_reg'left - 1 downto 0) & i_fval;
+      lval_shift_reg <= lval_shift_reg(lval_shift_reg'left - 1 downto 0) & i_lval;
     
     
-    o_fval <= fval_shift_reg(fval_shift_reg'left);
-    o_lval <= lval_shift_reg(lval_shift_reg'left);
+      o_fval <= fval_shift_reg(fval_shift_reg'left);
+      o_lval <= lval_shift_reg(lval_shift_reg'left);
     
     
 end if;
@@ -206,33 +187,32 @@ if rising_edge(clk) then
     --es muss nur dafür gesorgt werden dass kein Overflow / Underflow geschieht -
     --in x Richtung ableiten ! (Dx)
     --https://en.wikipedia.org/wiki/Prewitt_operator#Formulation
-   
-   
-   
-   
-   
-   
-   
-   
-   
-    if reg2 > fifo1_d then
-        dx <= std_logic_vector(unsigned(reg2) - unsigned(fifo1_d)); 
+   if reg2 > data_fifo1 then
+        dx <= std_logic_vector(unsigned(reg2) - unsigned(data_fifo1)); 
     else
-        dx <= std_logic_vector(unsigned(fifo1_d) - unsigned(reg2));
+        dx <= std_logic_vector(unsigned(data_fifo1) - unsigned(reg2));
     end if;
     
     --Quadrat bilden (in x richtung)
     dx_s <= std_logic_vector(unsigned(dx) * unsigned (dx)) ;
     
     --in y Ricthung ableiten (Dy)
-    if i_video_d3 > fifo2_d then
-        dy <= std_logic_vector(unsigned(i_video_d3) - unsigned(fifo2_d)); 
+  --  if i_video_d1 > fifo2_d then
+  --      dy <= std_logic_vector(unsigned(i_video_d1) - unsigned(fifo2_d)); 
+  --  else
+  --      dy <= std_logic_vector(unsigned(fifo2_d) - unsigned(i_video_d1));
+  --  end if;
+    
+    
+    if i_video_d3 > data_fifo2 then
+        dy <= std_logic_vector(unsigned(i_video_d3) - unsigned(data_fifo2)); 
     else
-        dy <= std_logic_vector(unsigned(fifo2_d) - unsigned(i_video_d3));
+        dy <= std_logic_vector(unsigned(data_fifo2) - unsigned(i_video_d3));
     end if;
     
-    dy_s <= std_logic_vector(unsigned(dy) * unsigned(dy));
     
+    dy_s <= std_logic_vector(unsigned(dy) * unsigned(dy));
+   
     
     sum <= std_logic_vector(unsigned('0' & dx_s) + unsigned('0' & dy_s));
     
@@ -244,6 +224,7 @@ if rising_edge(clk) then
     
     --Was passiert wenn 10 downto 0 ? -- Ameisenkampf (gleichverteiltes Rauschen!) 
     sqrt_addr <= sum_c(15 downto 5);
+ --   sqrt_addr(0) <= sum_c(0);
 end if;
 end process PREWITT_PROC;
 
@@ -259,7 +240,9 @@ if rising_edge(clk) then
         end if; 
     else
         o_video <= edge_detected; --kommt von SQRT LUT
+     --   o_video <= i_video;
     end if;
+    
 end if;
 end process BINARYISE_PROC;
 
@@ -295,10 +278,10 @@ PORT MAP(
 
 SQRT_LUT: blk_mem_gen_0
 PORT MAP(
-    clka => clk,
-    ena => '1',
-    addra => sqrt_addr,
-    douta => edge_detected
+   clka => clk,
+   ena => '1',
+   addra => sqrt_addr,
+   douta => edge_detected
 );
 
 
